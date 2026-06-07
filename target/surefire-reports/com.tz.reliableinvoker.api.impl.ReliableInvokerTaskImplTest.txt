@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.tz.reliableinvoker.api.impl.ReliableInvokerTaskImplTest
--------------------------------------------------------------------------------
-Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.449 s - in com.tz.reliableinvoker.api.impl.ReliableInvokerTaskImplTest
