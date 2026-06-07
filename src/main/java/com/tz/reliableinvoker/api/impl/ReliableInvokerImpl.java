@@ -6,6 +6,7 @@ import com.tz.reliableinvoker.dao.IInvocationRecordDao;
 import com.tz.reliableinvoker.exception.ParamsTooLargeException;
 import com.tz.reliableinvoker.model.InvocationRecord;
 import com.tz.reliableinvoker.model.InvocationRequest;
+import com.tz.reliableinvoker.model.InvocationStatusEnum;
 import com.tz.reliableinvoker.service.IAsyncExecutor;
 import com.tz.reliableinvoker.service.IRetryService;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -165,7 +166,7 @@ public class ReliableInvokerImpl implements IReliableInvoker {
         record.setBeanName(request.getBeanName());
         record.setMethodName(request.getMethodName());
         record.setParams(paramsJson);
-        record.setStatus(0);
+        record.setStatus(InvocationStatusEnum.PENDING.getCode());
         record.setRetryCount(0);
         record.setMaxRetryCount(maxRetry);
         record.setRetryDelay(retryDelay);

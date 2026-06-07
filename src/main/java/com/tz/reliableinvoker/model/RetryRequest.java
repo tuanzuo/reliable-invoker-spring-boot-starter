@@ -92,7 +92,7 @@ public class RetryRequest<S extends Enum<S>> {
     public static class Builder<S extends Enum<S>> {
 
         private S scene;
-        private List<Integer> statusList = Arrays.asList(0);
+        private List<Integer> statusList = Arrays.asList(InvocationStatusEnum.PENDING.getCode());
         private int maxRetry;
         private int retryDelay;
         private int shardTotal = 1;

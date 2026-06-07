@@ -6,6 +6,7 @@ import com.tz.reliableinvoker.dao.impl.JdbcTemplateInvocationRecordDaoImpl;
 import com.tz.reliableinvoker.model.BackupQueryRequest;
 import com.tz.reliableinvoker.model.BackupRequest;
 import com.tz.reliableinvoker.model.InvocationRecord;
+import com.tz.reliableinvoker.model.InvocationStatusEnum;
 import com.tz.reliableinvoker.model.RetryRequest;
 import com.tz.reliableinvoker.service.IBackupService;
 import com.tz.reliableinvoker.service.IRetryService;
@@ -67,13 +68,13 @@ public class ReliableInvokerTaskImplTest {
     @Test
     void testRetry() {
         for (int i = 0; i < 3; i++) {
-            InvocationRecord record = createRecord(0, "SN-RETRY-" + i);
+            InvocationRecord record = createRecord(InvocationStatusEnum.PENDING.getCode(), "SN-RETRY-" + i);
             recordDao.save(record);
         }
 
         RetryRequest<TaskTestScene> request = RetryRequest.<TaskTestScene>builder()
                 .scene(TaskTestScene.TEST_SCENE)
-                .statusList(Arrays.asList(0))
+                .statusList(Arrays.asList(InvocationStatusEnum.PENDING.getCode()))
                 .shardTotal(1)
                 .shardIndex(0)
                 .limit(100)
@@ -93,14 +94,14 @@ public class ReliableInvokerTaskImplTest {
                             + " retry_count, max_retry_count, retry_delay, create_time)"
                             + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     "SN-BACKUP-" + i, SCENE, "testBean", "testMethod", "{}",
-                    2, 0, 3, 5000,
+                    InvocationStatusEnum.SUCCESS.getCode(), 0, 3, 5000,
                     Timestamp.valueOf(LocalDateTime.now().minusDays(10))
             );
         }
 
         BackupRequest<TaskTestScene> request = BackupRequest.<TaskTestScene>builder()
                 .scene(TaskTestScene.TEST_SCENE)
-                .statusList(Arrays.asList(2))
+                .statusList(Arrays.asList(InvocationStatusEnum.SUCCESS.getCode()))
                 .days(7)
                 .shardTotal(1)
                 .shardIndex(0)
@@ -113,7 +114,7 @@ public class ReliableInvokerTaskImplTest {
 
         BackupQueryRequest query = new BackupQueryRequest();
         query.setScene(SCENE);
-        query.setStatusList(Arrays.asList(2));
+        query.setStatusList(Arrays.asList(InvocationStatusEnum.SUCCESS.getCode()));
         query.setDays(7);
         query.setShardTotal(1);
         query.setShardIndex(0);

@@ -3,6 +3,7 @@ package com.tz.reliableinvoker.dao.impl;
 import com.tz.reliableinvoker.config.ReliableInvokerProperties;
 import com.tz.reliableinvoker.model.BackupQueryRequest;
 import com.tz.reliableinvoker.model.InvocationRecord;
+import com.tz.reliableinvoker.model.InvocationStatusEnum;
 import com.tz.reliableinvoker.model.RetryQueryRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,7 +63,7 @@ class JdbcTemplateInvocationRecordDaoImplTest {
         assertEquals("testBean", saved.getBeanName());
         assertEquals("testMethod", saved.getMethodName());
         assertEquals("{\"key\":\"value\"}", saved.getParams());
-        assertEquals(Integer.valueOf(0), saved.getStatus());
+        assertEquals(Integer.valueOf(InvocationStatusEnum.PENDING.getCode()), saved.getStatus());
         assertEquals(Integer.valueOf(0), saved.getRetryCount());
         assertEquals(Integer.valueOf(3), saved.getMaxRetryCount());
         assertEquals(Integer.valueOf(5000), saved.getRetryDelay());
@@ -78,11 +79,11 @@ class JdbcTemplateInvocationRecordDaoImplTest {
         InvocationRecord saved = dao.save(record);
         assertNotNull(saved);
 
-        dao.updateStatus(saved.getId(), 2, SCENE);
+        dao.updateStatus(saved.getId(), InvocationStatusEnum.SUCCESS.getCode(), SCENE);
 
         InvocationRecord updated = dao.findBySerialNo("SN-002", SCENE);
         assertNotNull(updated);
-        assertEquals(Integer.valueOf(2), updated.getStatus());
+        assertEquals(Integer.valueOf(InvocationStatusEnum.SUCCESS.getCode()), updated.getStatus());
     }
 
     @Test
@@ -94,7 +95,7 @@ class JdbcTemplateInvocationRecordDaoImplTest {
 
         RetryQueryRequest request = new RetryQueryRequest();
         request.setScene(SCENE);
-        request.setStatusList(Arrays.asList(0));
+        request.setStatusList(Arrays.asList(InvocationStatusEnum.PENDING.getCode()));
         request.setShardTotal(2);
         request.setShardIndex(0);
         request.setLimit(100);
@@ -116,7 +117,7 @@ class JdbcTemplateInvocationRecordDaoImplTest {
 
         RetryQueryRequest request = new RetryQueryRequest();
         request.setScene(SCENE);
-        request.setStatusList(Arrays.asList(0));
+        request.setStatusList(Arrays.asList(InvocationStatusEnum.PENDING.getCode()));
         request.setShardTotal(1);
         request.setShardIndex(0);
         request.setLimit(3);
@@ -135,14 +136,14 @@ class JdbcTemplateInvocationRecordDaoImplTest {
                             + " retry_count, max_retry_count, retry_delay, create_time)"
                             + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     "SN-BACKUP-" + i, SCENE, "testBean", "testMethod", "{}",
-                    2, 0, 3, 5000,
+                    InvocationStatusEnum.SUCCESS.getCode(), 0, 3, 5000,
                     Timestamp.valueOf(LocalDateTime.now().minusDays(10))
             );
         }
 
         BackupQueryRequest request = new BackupQueryRequest();
         request.setScene(SCENE);
-        request.setStatusList(Arrays.asList(2));
+        request.setStatusList(Arrays.asList(InvocationStatusEnum.SUCCESS.getCode()));
         request.setDays(7);
         request.setShardTotal(1);
         request.setShardIndex(0);
@@ -170,7 +171,7 @@ class JdbcTemplateInvocationRecordDaoImplTest {
         record.setBeanName("testBean");
         record.setMethodName("testMethod");
         record.setParams("{\"key\":\"value\"}");
-        record.setStatus(0);
+        record.setStatus(InvocationStatusEnum.PENDING.getCode());
         record.setRetryCount(0);
         record.setMaxRetryCount(3);
         record.setRetryDelay(5000);

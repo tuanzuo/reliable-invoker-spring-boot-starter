@@ -84,7 +84,7 @@ public class BackupRequest<S extends Enum<S>> {
     public static class Builder<S extends Enum<S>> {
 
         private S scene;
-        private List<Integer> statusList = Arrays.asList(2);
+        private List<Integer> statusList = Arrays.asList(InvocationStatusEnum.SUCCESS.getCode());
         private int days;
         private int shardTotal = 1;
         private int shardIndex;

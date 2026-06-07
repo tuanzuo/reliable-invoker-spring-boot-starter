@@ -3,6 +3,7 @@ package com.tz.reliableinvoker.service.impl;
 import com.tz.reliableinvoker.dao.IInvocationRecordDao;
 import com.tz.reliableinvoker.exception.ExecutionException;
 import com.tz.reliableinvoker.model.InvocationRecord;
+import com.tz.reliableinvoker.model.InvocationStatusEnum;
 import com.tz.reliableinvoker.service.IRetryService;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -65,12 +66,14 @@ public class RetryServiceImpl implements IRetryService {
                 method = this.findMethod(beanClass, record.getMethodName(), paramTypes);
             }
             method.invoke(bean, args);
-            this.recordDao.updateStatus(record.getId(), 2, record.getScene());
+            this.recordDao.updateStatus(record.getId(), InvocationStatusEnum.SUCCESS.getCode(), record.getScene());
         } catch (Exception e) {
             int newRetryCount = (retryCount != null ? retryCount : 0) + 1;
             Integer maxRetryCount = record.getMaxRetryCount();
             int maxCount = maxRetryCount != null ? maxRetryCount : 0;
-            this.recordDao.updateStatus(record.getId(), newRetryCount >= maxCount ? 3 : 0, record.getScene());
+            this.recordDao.updateStatus(record.getId(),
+                    newRetryCount >= maxCount ? InvocationStatusEnum.FAILED.getCode() : InvocationStatusEnum.PENDING.getCode(),
+                    record.getScene());
             throw new ExecutionException("Retry failed: " + e.getMessage(), e);
         }
     }

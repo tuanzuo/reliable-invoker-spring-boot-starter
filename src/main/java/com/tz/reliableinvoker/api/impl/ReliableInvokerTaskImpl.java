@@ -5,6 +5,7 @@ import com.tz.reliableinvoker.dao.IInvocationRecordDao;
 import com.tz.reliableinvoker.model.BackupQueryRequest;
 import com.tz.reliableinvoker.model.BackupRequest;
 import com.tz.reliableinvoker.model.InvocationRecord;
+import com.tz.reliableinvoker.model.InvocationStatusEnum;
 import com.tz.reliableinvoker.model.RetryQueryRequest;
 import com.tz.reliableinvoker.model.RetryRequest;
 import com.tz.reliableinvoker.service.IBackupService;
@@ -49,7 +50,7 @@ public class ReliableInvokerTaskImpl implements IReliableInvokerTask {
             int retryCount = record.getRetryCount() != null ? record.getRetryCount() : 0;
             int maxRetryCount = record.getMaxRetryCount() != null ? record.getMaxRetryCount() : 0;
             if (retryCount >= maxRetryCount) {
-                this.recordDao.updateStatus(record.getId(), 3, record.getScene());
+                this.recordDao.updateStatus(record.getId(), InvocationStatusEnum.FAILED.getCode(), record.getScene());
             } else {
                 this.retryService.retry(record);
             }

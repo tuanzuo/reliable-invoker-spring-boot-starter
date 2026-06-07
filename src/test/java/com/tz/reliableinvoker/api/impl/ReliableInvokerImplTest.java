@@ -5,6 +5,7 @@ import com.tz.reliableinvoker.dao.IInvocationRecordDao;
 import com.tz.reliableinvoker.dao.impl.JdbcTemplateInvocationRecordDaoImpl;
 import com.tz.reliableinvoker.model.InvocationRecord;
 import com.tz.reliableinvoker.model.InvocationRequest;
+import com.tz.reliableinvoker.model.InvocationStatusEnum;
 import com.tz.reliableinvoker.service.IAsyncExecutor;
 import com.tz.reliableinvoker.service.IRetryService;
 import org.junit.jupiter.api.AfterEach;
@@ -92,7 +93,7 @@ public class ReliableInvokerImplTest {
         InvocationRecord record = invoker.execute(request);
 
         assertNotNull(record);
-        assertEquals(Integer.valueOf(0), record.getStatus());
+        assertEquals(Integer.valueOf(InvocationStatusEnum.PENDING.getCode()), record.getStatus());
         verify(taskExecutor, times(1)).execute(any(Runnable.class));
     }
 
