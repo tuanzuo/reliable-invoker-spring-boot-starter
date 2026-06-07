@@ -53,24 +53,49 @@ public enum BusinessSceneEnum {
 ```yaml
 reliable:
   invoker:
-    enabled: true
-    table-name: reliable_invocation_record
-    max-retry: 3                 # 全局默认最大重试次数
-    default-delay: 5000          # 全局默认重试间隔(ms)
-    async:                       # 全局异步线程池
-      core-pool-size: 5
-      max-pool-size: 20
-      queue-capacity: 100
-    scenes:                      # 场景级配置（key 对应枚举 name()）
-      ORDER_SCENE:
-        table-name: order_invocation
-        max-retry: 5
-        default-delay: 3000
-        async:                   # 场景独立线程池（可选）
+    # ===== 全局配置 =====
+    enabled: true                           # 是否启用组件（默认 true）
+    table-name: reliable_invocation_record  # 全局默认表名
+    max-retry: 3                            # 全局默认最大重试次数
+    default-delay: 5000                     # 全局默认重试间隔，单位毫秒
+
+    # 全局异步线程池配置
+    async:
+      core-pool-size: 5                     # 核心线程数
+      max-pool-size: 20                     # 最大线程数
+      queue-capacity: 100                   # 阻塞队列容量
+
+    # ===== 场景级配置（可选，key 对应枚举 name()） =====
+    # 未配置的项自动使用全局默认值
+    scenes:
+      ORDER_SCENE:                          # 场景标识
+        table-name: order_invocation        # 场景独立表名（不配则用全局）
+        max-retry: 5                        # 场景级最大重试次数（不配则用全局）
+        default-delay: 3000                 # 场景级重试间隔（不配则用全局）
+        # 场景独立线程池（可选，不配则复用全局 async 配置）
+        async:
           core-pool-size: 10
           max-pool-size: 50
           queue-capacity: 200
+      PAYMENT_SCENE:                        # 另一个场景示例
+        table-name: payment_invocation
+        max-retry: 3
+        default-delay: 5000
 ```
+
+| 属性 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `enabled` | Boolean | `true` | 是否启用组件 |
+| `table-name` | String | `reliable_invocation_record` | 默认表名，场景可覆盖 |
+| `max-retry` | Integer | `3` | 全局默认最大重试次数，场景可覆盖，调用级 `maxRetry>0` 可再次覆盖 |
+| `default-delay` | Integer | `5000` | 全局默认重试间隔（毫秒），场景可覆盖，调用级 `retryDelay>0` 可再次覆盖 |
+| `async.core-pool-size` | Integer | `5` | 线程池核心线程数 |
+| `async.max-pool-size` | Integer | `20` | 线程池最大线程数 |
+| `async.queue-capacity` | Integer | `100` | 线程池阻塞队列容量 |
+| `scenes.{name}.table-name` | String | `null` | 场景独立表名，不配则使用全局 `table-name` |
+| `scenes.{name}.max-retry` | Integer | `null` | 场景级最大重试次数，不配则使用全局 `max-retry` |
+| `scenes.{name}.default-delay` | Integer | `null` | 场景级重试间隔，不配则使用全局 `default-delay` |
+| `scenes.{name}.async` | AsyncProperties | `null` | 场景独立线程池，不配则复用全局 `async` |
 
 ### 5. 使用
 
