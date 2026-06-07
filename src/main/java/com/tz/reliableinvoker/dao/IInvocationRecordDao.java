@@ -4,6 +4,7 @@ import com.tz.reliableinvoker.model.BackupQueryRequest;
 import com.tz.reliableinvoker.model.InvocationRecord;
 import com.tz.reliableinvoker.model.RetryQueryRequest;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -30,11 +31,12 @@ public interface IInvocationRecordDao {
     /**
      * 更新调用记录的状态
      *
-     * @param id    记录主键
-     * @param status 新状态码
-     * @param scene 业务场景标识
+     * @param id          记录主键
+     * @param status      新状态码
+     * @param executeTime 计划执行时间，成功或失败时可传 {@code null}
+     * @param scene        业务场景标识
      */
-    void updateStatus(Long id, Integer status, String scene);
+    void updateStatus(Long id, Integer status, LocalDateTime executeTime, String scene);
 
     /**
      * 根据主键删除记录

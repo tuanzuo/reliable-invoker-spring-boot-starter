@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.context.ApplicationContext;
 
 import java.lang.reflect.Method;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -38,15 +39,7 @@ public class RetryServiceImpl implements IRetryService {
 
     @Override
     public void retry(InvocationRecord record) {
-        Integer retryDelay = record.getRetryDelay();
         Integer retryCount = record.getRetryCount();
-        if (retryDelay != null && retryDelay > 0 && retryCount != null && retryCount > 0) {
-            try {
-                Thread.sleep(retryDelay);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
         try {
             Object bean = this.applicationContext.getBean(record.getBeanName());
             Class<?> beanClass = bean.getClass();
@@ -66,14 +59,16 @@ public class RetryServiceImpl implements IRetryService {
                 method = this.findMethod(beanClass, record.getMethodName(), paramTypes);
             }
             method.invoke(bean, args);
-            this.recordDao.updateStatus(record.getId(), InvocationStatusEnum.SUCCESS.getCode(), record.getScene());
+            this.recordDao.updateStatus(record.getId(), InvocationStatusEnum.SUCCESS.getCode(), null, record.getScene());
         } catch (Exception e) {
             int newRetryCount = (retryCount != null ? retryCount : 0) + 1;
             Integer maxRetryCount = record.getMaxRetryCount();
             int maxCount = maxRetryCount != null ? maxRetryCount : 0;
+            Integer retryDelay = record.getRetryDelay();
+            LocalDateTime nextExecuteTime = LocalDateTime.now().plusNanos((long) (retryDelay != null ? retryDelay : 0) * 1000000L);
             this.recordDao.updateStatus(record.getId(),
                     newRetryCount >= maxCount ? InvocationStatusEnum.FAILED.getCode() : InvocationStatusEnum.PENDING.getCode(),
-                    record.getScene());
+                    nextExecuteTime, record.getScene());
             throw new ExecutionException("Retry failed: " + e.getMessage(), e);
         }
     }

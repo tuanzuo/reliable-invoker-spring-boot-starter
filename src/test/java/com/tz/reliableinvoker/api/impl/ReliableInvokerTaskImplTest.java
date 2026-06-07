@@ -133,7 +133,7 @@ public class ReliableInvokerTaskImplTest {
         record.setRetryCount(0);
         record.setMaxRetryCount(3);
         record.setRetryDelay(5000);
-        record.setExecuteTime(LocalDateTime.now().plusHours(1));
+        record.setExecuteTime(LocalDateTime.now().minusHours(1));
         return record;
     }
 }

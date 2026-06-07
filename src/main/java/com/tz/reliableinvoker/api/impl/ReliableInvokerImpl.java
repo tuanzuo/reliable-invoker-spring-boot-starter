@@ -170,7 +170,7 @@ public class ReliableInvokerImpl implements IReliableInvoker {
         record.setRetryCount(0);
         record.setMaxRetryCount(maxRetry);
         record.setRetryDelay(retryDelay);
-        record.setExecuteTime(LocalDateTime.now().plusNanos((long) retryDelay * 1000000));
+        record.setExecuteTime(LocalDateTime.now());
         record.setRemark(request.getRemark());
         record.setCreateTime(LocalDateTime.now());
         return record;

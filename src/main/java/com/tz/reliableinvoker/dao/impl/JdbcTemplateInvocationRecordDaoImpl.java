@@ -105,14 +105,17 @@ public class JdbcTemplateInvocationRecordDaoImpl implements IInvocationRecordDao
      * {@inheritDoc}
      */
     @Override
-    public void updateStatus(Long id, Integer status, String scene) {
+    public void updateStatus(Long id, Integer status, LocalDateTime executeTime, String scene) {
         String tableName = this.resolveTableName(scene);
         String sql = "UPDATE " + tableName
-                + " SET status = :status, update_time = CURRENT_TIMESTAMP WHERE id = :id";
+                + " SET status = :status, retry_count = retry_count + 1,"
+                + " execute_time = :executeTime, update_time = :updateTime WHERE id = :id";
 
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("id", id)
-                .addValue("status", status);
+                .addValue("status", status)
+                .addValue("executeTime", executeTime != null ? Timestamp.valueOf(executeTime) : null)
+                .addValue("updateTime", Timestamp.valueOf(LocalDateTime.now()));
 
         this.namedJdbcTemplate.update(sql, params);
     }
@@ -158,11 +161,13 @@ public class JdbcTemplateInvocationRecordDaoImpl implements IInvocationRecordDao
 
         String tableName = this.resolveTableName(request.getScene());
         String sql = "SELECT * FROM " + tableName
-                + " WHERE status IN (:statuses)"
+                + " WHERE scene = :scene AND status IN (:statuses)"
+                + " AND execute_time <= CURRENT_TIMESTAMP"
                 + " AND MOD(id, :shardTotal) = :shardIndex"
                 + " ORDER BY create_time ASC LIMIT :limit";
 
         MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("scene", request.getScene())
                 .addValue("statuses", statusList)
                 .addValue("shardTotal", request.getShardTotal())
                 .addValue("shardIndex", request.getShardIndex())

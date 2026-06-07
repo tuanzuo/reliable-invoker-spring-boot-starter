@@ -50,7 +50,7 @@ public class ReliableInvokerTaskImpl implements IReliableInvokerTask {
             int retryCount = record.getRetryCount() != null ? record.getRetryCount() : 0;
             int maxRetryCount = record.getMaxRetryCount() != null ? record.getMaxRetryCount() : 0;
             if (retryCount >= maxRetryCount) {
-                this.recordDao.updateStatus(record.getId(), InvocationStatusEnum.FAILED.getCode(), record.getScene());
+                this.recordDao.updateStatus(record.getId(), InvocationStatusEnum.FAILED.getCode(), null, record.getScene());
             } else {
                 this.retryService.retry(record);
             }

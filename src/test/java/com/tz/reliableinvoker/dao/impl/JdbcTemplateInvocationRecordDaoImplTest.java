@@ -79,7 +79,7 @@ class JdbcTemplateInvocationRecordDaoImplTest {
         InvocationRecord saved = dao.save(record);
         assertNotNull(saved);
 
-        dao.updateStatus(saved.getId(), InvocationStatusEnum.SUCCESS.getCode(), SCENE);
+        dao.updateStatus(saved.getId(), InvocationStatusEnum.SUCCESS.getCode(), null, SCENE);
 
         InvocationRecord updated = dao.findBySerialNo("SN-002", SCENE);
         assertNotNull(updated);
@@ -175,7 +175,7 @@ class JdbcTemplateInvocationRecordDaoImplTest {
         record.setRetryCount(0);
         record.setMaxRetryCount(3);
         record.setRetryDelay(5000);
-        record.setExecuteTime(LocalDateTime.now().plusHours(1));
+        record.setExecuteTime(LocalDateTime.now().minusHours(1));
         record.setRemark("test remark");
         return record;
     }
