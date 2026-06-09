@@ -20,12 +20,12 @@ public interface IReliableInvoker {
     /**
      * 执行带有可靠性保证的方法调用
      * <p>
-     * 根据请求中的方法签名和参数，通过反射（或代理）调用目标方法。
+     * 根据请求中的 scene 定位 IInvocationHandler 并直接调用。
      * 调用成功后返回包含执行结果的{@link InvocationRecord}；
      * 若调用失败，记录会标记为待重试状态。
      * </p>
      *
-     * @param request 调用请求，包含类名、方法名、参数等信息
+     * @param request 调用请求，包含场景枚举和参数
      * @return 调用记录，包含执行状态、序列号等元数据
      */
     InvocationRecord execute(InvocationRequest<?> request);
