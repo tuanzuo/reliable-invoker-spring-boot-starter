@@ -298,6 +298,139 @@ public class PayNotifyMessage {
 - **异步解耦**：`async(true)` 在线程池中发送 Kafka，不阻塞支付接口响应
 - **重试策略**：`retryDelay=60000` 给 Kafka 恢复留足时间窗口，避免无效重试
 
+---
+
+## 完整示例：支付成功后调用积分系统发积分
+
+场景：订单支付成功后，需要调用积分系统的接口为用户发放积分。积分系统可能因网络波动或服务重启暂时不可用，需要可靠地保证发积分操作最终成功。
+
+### 场景枚举（扩展）
+
+```java
+public enum BusinessSceneEnum {
+    ORDER_PAY_NOTIFY("订单支付成功通知"),
+    AWARD_POINTS("支付成功发放积分");      // 新增
+
+    private final String description;
+    BusinessSceneEnum(String description) { this.description = description; }
+    public String getDescription() { return description; }
+}
+```
+
+### Handler 实现
+
+```java
+@Service
+public class AwardPointsHandler implements IInvocationHandler<BusinessSceneEnum, String> {
+
+    @Autowired
+    private PointsSystemClient pointsSystemClient;  // 积分系统 Feign/RestTemplate
+
+    @Override
+    public BusinessSceneEnum getScene() {
+        return BusinessSceneEnum.AWARD_POINTS;
+    }
+
+    @Override
+    public String execute(String paramsJson) {
+        AwardPointsRequest req = JSON.parseObject(paramsJson, AwardPointsRequest.class);
+        // 调用积分系统接口
+        return this.pointsSystemClient.award(req);
+    }
+}
+```
+
+### 积分请求体
+
+```java
+public class AwardPointsRequest {
+    private Long userId;
+    private Long orderId;
+    private BigDecimal amount;    // 根据支付金额计算积分
+    // getter / setter 省略
+}
+```
+
+### 业务 Service
+
+```java
+@Service
+public class OrderService {
+
+    @Autowired
+    private PaymentGateway paymentGateway;
+    @Autowired
+    private OrderDao orderDao;
+    @Autowired
+    private IReliableInvoker reliableInvoker;
+    @Autowired
+    private IReliableInvokerTask invokerTask;
+
+    /**
+     * 支付订单并发放积分
+     * <p>
+     * 流程：
+     * 1. 调用三方支付
+     * 2. 更新订单状态（步骤 1、2 在同一事务）
+     * 3. 事务提交后调用积分系统发积分（若积分系统暂不可用，记录持久化，定时重试）
+     * </p>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void payOrder(Long orderId, Long userId) {
+        // 1. 三方支付
+        PaymentResult result = paymentGateway.pay(orderId);
+        if (!result.isSuccess()) {
+            throw new PaymentException("支付失败: " + result.getErrorMsg());
+        }
+
+        // 2. 更新订单状态
+        orderDao.updateStatus(orderId, "PAID");
+
+        // 3. 构建发积分请求
+        AwardPointsRequest pointsReq = new AwardPointsRequest();
+        pointsReq.setUserId(userId);
+        pointsReq.setOrderId(orderId);
+        pointsReq.setAmount(result.getAmount());
+
+        // 4. 可靠调用：事务提交后发积分
+        //    —— 若积分系统不可用，记录持久化到 DB，后续重试
+        InvocationRequest<BusinessSceneEnum> request = InvocationRequest.<BusinessSceneEnum>builder()
+                .scene(BusinessSceneEnum.AWARD_POINTS)
+                .params(pointsReq)
+                .async(true)       // 异步调用，不阻塞支付接口
+                .maxRetry(10)      // 最多重试 10 次
+                .retryDelay(10000) // 重试间隔 10 秒
+                .remark("订单" + orderId + "发积分")
+                .build();
+
+        reliableInvoker.execute(request);
+    }
+
+    // 定时重试失败的积分发放
+    @Scheduled(cron = "0 */1 * * * *")
+    public void retryFailedPoints() {
+        RetryRequest<BusinessSceneEnum> request = RetryRequest.<BusinessSceneEnum>builder()
+                .scene(BusinessSceneEnum.AWARD_POINTS)
+                .statusList(Arrays.asList(0))  // PENDING
+                .shardTotal(1)
+                .shardIndex(0)
+                .limit(100)
+                .build();
+        int count = invokerTask.retry(request);
+        if (count > 0) {
+            log.info("重试了 {} 条积分发放记录", count);
+        }
+    }
+}
+```
+
+### 设计要点
+
+- **最终一致性**：积分发放不在支付事务内，而是通过 `afterCommit` 异步执行。即使积分系统暂时不可用，记录也会持久化，定时任务持续重试直到成功
+- **幂等性**：积分系统接口自身需保证幂等（按 `orderId` 去重），避免重试时重复发放
+- **限流保护**：`retryDelay=10000` 避免频繁重试对积分系统造成压力
+- **多场景共享**：支付通知和积分发放共享同一个 `IReliableInvoker` 入口，通过不同 scene 路由到不同 Handler
+
 ## 核心 API
 
 ### IReliableInvoker — 执行接口
