@@ -1,5 +1,10 @@
 # AGENTS.md
 
+## 工作流程规范
+- 使用Superpowers来进行开发过程的管理；请严格按照Brainstorming（头脑风暴），Writing Plans（任务拆解），Subagent Development（子代理开发），TDD（测试驱动开发），Code Review（代码审查），Finish Branch（完成）的过程执行，不允许跳过任何一个步骤；
+- 代码分析时使用codegraph
+- 每次改动需要有文档来记录，不允许任何没有文档记录的改动
+
 ## Build / Test / Lint Commands
 
 本项目使用 Maven，自定义 settings.xml 路径，**所有 Maven 命令必须加上 `-s` 参数**。

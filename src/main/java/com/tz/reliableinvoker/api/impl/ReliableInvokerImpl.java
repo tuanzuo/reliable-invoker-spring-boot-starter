@@ -1,30 +1,31 @@
 package com.tz.reliableinvoker.api.impl;
 
+import com.alibaba.fastjson.JSON;
 import com.tz.reliableinvoker.api.IReliableInvoker;
+import com.tz.reliableinvoker.config.HandlerRegistry;
 import com.tz.reliableinvoker.config.ReliableInvokerProperties;
 import com.tz.reliableinvoker.dao.IInvocationRecordDao;
 import com.tz.reliableinvoker.exception.ParamsTooLargeException;
+import com.tz.reliableinvoker.exception.ReliableInvokerException;
 import com.tz.reliableinvoker.model.InvocationRecord;
 import com.tz.reliableinvoker.model.InvocationRequest;
 import com.tz.reliableinvoker.model.InvocationStatusEnum;
-import com.tz.reliableinvoker.service.IAsyncExecutor;
 import com.tz.reliableinvoker.service.IRetryService;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * 可靠调用执行器默认实现
+ * 可靠调用执行器默认实现（Handler 模式）
  *
  * @author tuanzuo use AI
- * @time 2026-06-08 02:00:00
+ * @time 2026-06-10 00:00:00
  * @version 1.0.0-SNAPSHOT
  */
 public class ReliableInvokerImpl implements IReliableInvoker {
@@ -36,19 +37,20 @@ public class ReliableInvokerImpl implements IReliableInvoker {
     private final ReliableInvokerProperties properties;
     private final TaskExecutor defaultTaskExecutor;
     private final Map<String, TaskExecutor> sceneTaskExecutors;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final HandlerRegistry handlerRegistry;
 
     public ReliableInvokerImpl(IInvocationRecordDao recordDao,
                                 IRetryService retryService,
-                                IAsyncExecutor asyncExecutor,
                                 ReliableInvokerProperties properties,
                                 TaskExecutor defaultTaskExecutor,
-                                Map<String, TaskExecutor> sceneTaskExecutors) {
+                                Map<String, TaskExecutor> sceneTaskExecutors,
+                                HandlerRegistry handlerRegistry) {
         this.recordDao = recordDao;
         this.retryService = retryService;
         this.properties = properties;
         this.defaultTaskExecutor = defaultTaskExecutor;
-        this.sceneTaskExecutors = sceneTaskExecutors != null ? sceneTaskExecutors : new HashMap<>();
+        this.sceneTaskExecutors = sceneTaskExecutors != null ? sceneTaskExecutors : new HashMap<String, TaskExecutor>();
+        this.handlerRegistry = handlerRegistry;
     }
 
     @Override
@@ -74,30 +76,6 @@ public class ReliableInvokerImpl implements IReliableInvoker {
                 public void afterCommit() {
                     ReliableInvokerImpl.this.invokeTarget(request, record);
                 }
-
-                @Override
-                public void afterCompletion(int status) {
-                }
-
-                @Override
-                public void suspend() {
-                }
-
-                @Override
-                public void resume() {
-                }
-
-                @Override
-                public void flush() {
-                }
-
-                @Override
-                public void beforeCommit(boolean readOnly) {
-                }
-
-                @Override
-                public void beforeCompletion() {
-                }
             });
         } else {
             this.invokeTarget(request, record);
@@ -110,7 +88,12 @@ public class ReliableInvokerImpl implements IReliableInvoker {
         String sceneName = request.getScene().name();
         TaskExecutor executor = this.sceneTaskExecutors.getOrDefault(sceneName, this.defaultTaskExecutor);
         if (request.isAsync()) {
-            executor.execute(() -> this.retryService.retry(record));
+            executor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    ReliableInvokerImpl.this.retryService.retry(record);
+                }
+            });
         } else {
             this.retryService.retry(record);
         }
@@ -141,19 +124,26 @@ public class ReliableInvokerImpl implements IReliableInvoker {
         return this.properties.getDefaultDelay();
     }
 
+    /**
+     * 序列化参数为 JSON 字符串
+     * <p>注意：JSON.toJSONString(null) 返回 "null" 而非 null，
+     * 需显式处理 null 情况。</p>
+     */
     private String serializeParams(Object params) {
         if (params == null) {
             return null;
         }
         try {
-            String json = this.objectMapper.writeValueAsString(params);
-            byte[] bytes = json.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            String json = JSON.toJSONString(params);
+            byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
             if (bytes.length > MAX_PARAMS_BYTES) {
                 throw new ParamsTooLargeException(bytes.length, MAX_PARAMS_BYTES);
             }
             return json;
-        } catch (JsonProcessingException e) {
-            throw new com.tz.reliableinvoker.exception.ReliableInvokerException(
+        } catch (ParamsTooLargeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ReliableInvokerException(
                     "Failed to serialize params to JSON", e);
         }
     }
@@ -163,8 +153,6 @@ public class ReliableInvokerImpl implements IReliableInvoker {
         InvocationRecord record = new InvocationRecord();
         record.setSerialNo(UUID.randomUUID().toString());
         record.setScene(scene);
-        record.setBeanName(request.getBeanName());
-        record.setMethodName(request.getMethodName());
         record.setParams(paramsJson);
         record.setStatus(InvocationStatusEnum.PENDING.getCode());
         record.setRetryCount(0);

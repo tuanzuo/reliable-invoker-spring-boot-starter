@@ -20,12 +20,6 @@ public class InvocationRecord {
     /** 业务场景 */
     private String scene;
 
-    /** Bean名称 */
-    private String beanName;
-
-    /** 方法名 */
-    private String methodName;
-
     /** 参数JSON */
     private String params;
 
@@ -75,22 +69,6 @@ public class InvocationRecord {
 
     public void setScene(String scene) {
         this.scene = scene;
-    }
-
-    public String getBeanName() {
-        return beanName;
-    }
-
-    public void setBeanName(String beanName) {
-        this.beanName = beanName;
-    }
-
-    public String getMethodName() {
-        return methodName;
-    }
-
-    public void setMethodName(String methodName) {
-        this.methodName = methodName;
     }
 
     public String getParams() {

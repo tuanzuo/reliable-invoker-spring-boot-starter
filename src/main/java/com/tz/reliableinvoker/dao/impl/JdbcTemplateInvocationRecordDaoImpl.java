@@ -79,16 +79,14 @@ public class JdbcTemplateInvocationRecordDaoImpl implements IInvocationRecordDao
     public InvocationRecord save(InvocationRecord record) {
         String tableName = this.resolveTableName(record.getScene());
         String sql = "INSERT INTO " + tableName
-                + " (serial_no, scene, bean_name, method_name, params, status,"
+                + " (serial_no, scene, params, status,"
                 + " retry_count, max_retry_count, retry_delay, execute_time, remark)"
-                + " VALUES (:serialNo, :scene, :beanName, :methodName, :params, :status,"
+                + " VALUES (:serialNo, :scene, :params, :status,"
                 + " :retryCount, :maxRetryCount, :retryDelay, :executeTime, :remark)";
 
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("serialNo", record.getSerialNo())
                 .addValue("scene", record.getScene())
-                .addValue("beanName", record.getBeanName())
-                .addValue("methodName", record.getMethodName())
                 .addValue("params", record.getParams())
                 .addValue("status", record.getStatus())
                 .addValue("retryCount", record.getRetryCount())
@@ -228,8 +226,6 @@ public class JdbcTemplateInvocationRecordDaoImpl implements IInvocationRecordDao
             record.setId(rs.getLong("id"));
             record.setSerialNo(rs.getString("serial_no"));
             record.setScene(rs.getString("scene"));
-            record.setBeanName(rs.getString("bean_name"));
-            record.setMethodName(rs.getString("method_name"));
             record.setParams(rs.getString("params"));
             record.setStatus(rs.getInt("status"));
             record.setRetryCount(rs.getInt("retry_count"));

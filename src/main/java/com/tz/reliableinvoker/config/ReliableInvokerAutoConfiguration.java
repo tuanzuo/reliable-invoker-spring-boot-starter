@@ -2,10 +2,12 @@ package com.tz.reliableinvoker.config;
 
 import com.tz.reliableinvoker.api.IReliableInvoker;
 import com.tz.reliableinvoker.api.IReliableInvokerTask;
+import com.tz.reliableinvoker.api.IInvocationHandler;
 import com.tz.reliableinvoker.api.impl.ReliableInvokerImpl;
 import com.tz.reliableinvoker.api.impl.ReliableInvokerTaskImpl;
 import com.tz.reliableinvoker.dao.IInvocationRecordDao;
 import com.tz.reliableinvoker.dao.impl.JdbcTemplateInvocationRecordDaoImpl;
+import com.tz.reliableinvoker.exception.ReliableInvokerException;
 import com.tz.reliableinvoker.service.IAsyncExecutor;
 import com.tz.reliableinvoker.service.IBackupService;
 import com.tz.reliableinvoker.service.IRetryService;
@@ -30,7 +32,7 @@ import java.util.Map;
  * 可靠调用自动配置类
  *
  * @author tuanzuo use AI
- * @time 2026-06-08 02:00:00
+ * @time 2026-06-10 00:00:00
  * @version 1.0.0-SNAPSHOT
  */
 @Configuration
@@ -59,7 +61,7 @@ public class ReliableInvokerAutoConfiguration {
 
     @Bean
     public Map<String, TaskExecutor> sceneTaskExecutors(ReliableInvokerProperties properties) {
-        Map<String, TaskExecutor> executors = new HashMap<>();
+        Map<String, TaskExecutor> executors = new HashMap<String, TaskExecutor>();
         if (properties.getScenes() != null) {
             for (Map.Entry<String, ReliableInvokerProperties.SceneProperties> e : properties.getScenes().entrySet()) {
                 if (e.getValue().getAsync() != null) {
@@ -77,15 +79,33 @@ public class ReliableInvokerAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(HandlerRegistry.class)
+    public HandlerRegistry handlerRegistry(ApplicationContext applicationContext) {
+        Map<String, IInvocationHandler> beans = applicationContext.getBeansOfType(IInvocationHandler.class);
+        Map<String, IInvocationHandler<?, ?>> registry = new HashMap<String, IInvocationHandler<?, ?>>();
+        for (IInvocationHandler handler : beans.values()) {
+            String scene = handler.getScene().name();
+            if (registry.containsKey(scene)) {
+                throw new ReliableInvokerException(
+                        "Duplicate handler for scene [" + scene + "]: "
+                        + registry.get(scene).getClass().getName() + " and "
+                        + handler.getClass().getName());
+            }
+            registry.put(scene, handler);
+        }
+        return new HandlerRegistry(registry);
+    }
+
+    @Bean
     @ConditionalOnMissingBean(IReliableInvoker.class)
     public IReliableInvoker reliableInvoker(IInvocationRecordDao recordDao,
             IRetryService retryService,
-            IAsyncExecutor asyncExecutor,
             ReliableInvokerProperties properties,
             @Qualifier("reliableInvokerTaskExecutor") TaskExecutor defaultTaskExecutor,
-            Map<String, TaskExecutor> sceneTaskExecutors) {
-        return new ReliableInvokerImpl(recordDao, retryService, asyncExecutor, properties,
-                defaultTaskExecutor, sceneTaskExecutors);
+            Map<String, TaskExecutor> sceneTaskExecutors,
+            HandlerRegistry handlerRegistry) {
+        return new ReliableInvokerImpl(recordDao, retryService, properties,
+                defaultTaskExecutor, sceneTaskExecutors, handlerRegistry);
     }
 
     @Bean
@@ -104,8 +124,8 @@ public class ReliableInvokerAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(IRetryService.class)
-    public IRetryService retryService(IInvocationRecordDao recordDao, ApplicationContext applicationContext) {
-        return new RetryServiceImpl(applicationContext, recordDao);
+    public IRetryService retryService(IInvocationRecordDao recordDao, HandlerRegistry handlerRegistry) {
+        return new RetryServiceImpl(handlerRegistry, recordDao);
     }
 
     @Bean
