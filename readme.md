@@ -142,7 +142,7 @@ public class OrderService {
         reliableInvoker.execute(request);
     }
 
-    // 手动重试失败任务（也可通过 @Scheduled 定时触发）
+    // 定时重试失败任务
     @Scheduled(cron = "0 */5 * * * *")
     public void retryFailedTasks() {
         RetryRequest<BusinessSceneEnum> request = RetryRequest.<BusinessSceneEnum>builder()
@@ -166,6 +166,137 @@ public class OrderService {
     }
 }
 ```
+
+## 完整示例：订单支付 + 事务 + 可靠 Kafka 消息
+
+场景：用户下单后调用三方支付，支付成功后更新订单状态为已支付（事务），最后需要可靠地发送一条支付成功的 Kafka 消息。利用 `reliable-invoker` 的 `afterCommit` 事务提交后执行机制 + 对 Kafka 发送的持久化保障，确保通知不丢失。
+
+### 场景枚举
+
+```java
+public enum BusinessSceneEnum {
+    ORDER_PAY_NOTIFY("订单支付成功通知场景");
+
+    private final String description;
+    BusinessSceneEnum(String description) { this.description = description; }
+    public String getDescription() { return description; }
+}
+```
+
+### Handler 实现
+
+```java
+@Service
+public class OrderPayNotifyHandler implements IInvocationHandler<BusinessSceneEnum, Void> {
+
+    @Autowired
+    private KafkaTemplate<String, String> kafkaTemplate;
+
+    @Override
+    public BusinessSceneEnum getScene() {
+        return BusinessSceneEnum.ORDER_PAY_NOTIFY;
+    }
+
+    @Override
+    public Void execute(String paramsJson) {
+        PayNotifyMessage msg = JSON.parseObject(paramsJson, PayNotifyMessage.class);
+        // 发送 Kafka 消息
+        kafkaTemplate.send("order-paid-topic", msg.getOrderId(), paramsJson);
+        return null;
+    }
+}
+```
+
+### 业务 Service
+
+```java
+@Service
+public class OrderService {
+
+    @Autowired
+    private PaymentGateway paymentGateway;       // 三方支付
+    @Autowired
+    private OrderDao orderDao;                   // 订单 DAO
+    @Autowired
+    private IReliableInvoker reliableInvoker;
+    @Autowired
+    private IReliableInvokerTask invokerTask;
+
+    /**
+     * 支付订单
+     * <p>
+     * 执行流程：
+     * 1. 调用三方支付 → 扣款
+     * 2. 更新订单状态为已支付（与步骤 1 在同一事务中）
+     * 3. 事务提交成功后（afterCommit），由 reliable-invoker 可靠发送 Kafka 通知
+     * </p>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void payOrder(Long orderId) {
+        // 1. 调用三方支付
+        PaymentResult result = paymentGateway.pay(orderId);
+        if (!result.isSuccess()) {
+            throw new PaymentException("支付失败: " + result.getErrorMsg());
+        }
+
+        // 2. 更新订单状态（当前事务）
+        orderDao.updateStatus(orderId, "PAID");
+
+        // 3. 构建 Kafka 消息体
+        PayNotifyMessage message = new PayNotifyMessage();
+        message.setOrderId(orderId.toString());
+        message.setPayTime(new Date());
+        message.setAmount(result.getAmount());
+
+        // 4. 可靠调用：事务提交后发送 Kafka 消息
+        //    —— 若 Kafka 宕机，消息记录将持久化到 DB，后续定时任务重试
+        InvocationRequest<BusinessSceneEnum> request = InvocationRequest.<BusinessSceneEnum>builder()
+                .scene(BusinessSceneEnum.ORDER_PAY_NOTIFY)
+                .params(message)
+                .async(true)          // 异步发送，不阻塞支付接口响应
+                .maxRetry(5)          // 最多重试 5 次
+                .retryDelay(60000)    // 重试间隔 60 秒（给 Kafka 恢复时间窗口）
+                .remark("订单" + orderId + "支付通知")
+                .build();
+
+        reliableInvoker.execute(request);
+    }
+
+    // 定时重试失败的 Kafka 消息
+    @Scheduled(cron = "0 */1 * * * *")
+    public void retryFailedNotify() {
+        RetryRequest<BusinessSceneEnum> request = RetryRequest.<BusinessSceneEnum>builder()
+                .scene(BusinessSceneEnum.ORDER_PAY_NOTIFY)
+                .statusList(Arrays.asList(0))  // PENDING
+                .shardTotal(1)
+                .shardIndex(0)
+                .limit(100)
+                .build();
+        int count = invokerTask.retry(request);
+        if (count > 0) {
+            log.info("重试了 {} 条支付通知消息", count);
+        }
+    }
+}
+```
+
+### 消息体
+
+```java
+public class PayNotifyMessage {
+    private String orderId;
+    private Date payTime;
+    private BigDecimal amount;
+    // getter / setter 省略
+}
+```
+
+### 设计要点
+
+- **事务边界**：三方支付 + 订单状态更新在同一个 `@Transactional` 内；Kafka 发送在事务提交后（`afterCommit`）执行，确保"先扣款成功，再发通知"
+- **可靠性**：Kafka 消息发送委托给 `reliable-invoker`，失败时记录自动持久化到 DB，`@Scheduled` 定时重试
+- **异步解耦**：`async(true)` 在线程池中发送 Kafka，不阻塞支付接口响应
+- **重试策略**：`retryDelay=60000` 给 Kafka 恢复留足时间窗口，避免无效重试
 
 ## 核心 API
 
