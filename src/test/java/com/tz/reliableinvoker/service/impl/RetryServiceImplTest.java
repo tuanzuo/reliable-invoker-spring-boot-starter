@@ -5,6 +5,7 @@ import com.tz.reliableinvoker.config.HandlerRegistry;
 import com.tz.reliableinvoker.dao.IInvocationRecordDao;
 import com.tz.reliableinvoker.exception.ExecutionException;
 import com.tz.reliableinvoker.exception.ReliableInvokerException;
+import com.tz.reliableinvoker.exception.ReliableInvokerException;
 import com.tz.reliableinvoker.model.InvocationRecord;
 import com.tz.reliableinvoker.model.InvocationStatusEnum;
 import org.junit.jupiter.api.Test;
@@ -63,8 +64,8 @@ public class RetryServiceImplTest {
         record.setMaxRetryCount(3);
         record.setRetryDelay(5000);
 
-        assertThrows(ExecutionException.class, () -> retryService.retry(record));
-        verify(recordDao).updateStatus(eq(1L), eq(InvocationStatusEnum.PENDING.getCode()), any(), eq("NOT_EXIST"));
+        assertThrows(ReliableInvokerException.class, () -> retryService.retry(record));
+        verify(recordDao).updateStatus(eq(1L), eq(InvocationStatusEnum.FAILED.getCode()), any(), eq("NOT_EXIST"));
     }
 
     @Test

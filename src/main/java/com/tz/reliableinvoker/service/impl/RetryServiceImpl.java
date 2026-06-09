@@ -4,6 +4,7 @@ import com.tz.reliableinvoker.api.IInvocationHandler;
 import com.tz.reliableinvoker.config.HandlerRegistry;
 import com.tz.reliableinvoker.dao.IInvocationRecordDao;
 import com.tz.reliableinvoker.exception.ExecutionException;
+import com.tz.reliableinvoker.exception.ReliableInvokerException;
 import com.tz.reliableinvoker.model.InvocationRecord;
 import com.tz.reliableinvoker.model.InvocationStatusEnum;
 import com.tz.reliableinvoker.service.IRetryService;
@@ -42,6 +43,10 @@ public class RetryServiceImpl implements IRetryService {
 
             this.recordDao.updateStatus(record.getId(),
                     InvocationStatusEnum.SUCCESS.getCode(), null, record.getScene());
+        } catch (ReliableInvokerException e) {
+            this.recordDao.updateStatus(record.getId(),
+                    InvocationStatusEnum.FAILED.getCode(), null, record.getScene());
+            throw e;
         } catch (Exception e) {
             int newRetryCount = (retryCount != null ? retryCount : 0) + 1;
             Integer maxRetryCount = record.getMaxRetryCount();
