@@ -1,6 +1,6 @@
 # reliable-invoker-spring-boot-starter
 
-Spring Boot Starter 组件，提供带持久化保证的 Handler 模式调用能力，支持同步/异步执行、重试和备份/清理。业务方实现 `IInvocationHandler` 接口并按场景注册，框架通过 scene 自动路由调用，彻底避免方法名硬编码问题。
+Spring Boot Starter 高可靠性调用组件。通过将方法调用持久化到数据库，结合事务提交后执行、失败自动重试等机制，对任何 Spring 管理的 Bean 方法实现最终一致性，达到"调用即可靠"的目标。业务方实现 `IInvocationHandler` 接口并按场景注册，框架通过 scene 自动路由调用，彻底避免方法名硬编码问题。
 
 ## 快速开始
 
