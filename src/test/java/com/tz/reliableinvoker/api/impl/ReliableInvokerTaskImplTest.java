@@ -90,10 +90,10 @@ public class ReliableInvokerTaskImplTest {
         for (int i = 0; i < 5; i++) {
             jdbcTemplate.update(
                     "INSERT INTO reliable_invocation_record"
-                            + " (serial_no, scene, bean_name, method_name, params, status,"
+                            + " (serial_no, scene, params, status,"
                             + " retry_count, max_retry_count, retry_delay, create_time)"
-                            + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    "SN-BACKUP-" + i, SCENE, "testBean", "testMethod", "{}",
+                            + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    "SN-BACKUP-" + i, SCENE, "{}",
                     InvocationStatusEnum.SUCCESS.getCode(), 0, 3, 5000,
                     Timestamp.valueOf(LocalDateTime.now().minusDays(10))
             );
@@ -126,8 +126,6 @@ public class ReliableInvokerTaskImplTest {
         InvocationRecord record = new InvocationRecord();
         record.setSerialNo(serialNo);
         record.setScene(SCENE);
-        record.setBeanName("testBean");
-        record.setMethodName("testMethod");
         record.setParams("{}");
         record.setStatus(status);
         record.setRetryCount(0);

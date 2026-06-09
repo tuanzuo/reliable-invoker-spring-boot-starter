@@ -1,12 +1,12 @@
 package com.tz.reliableinvoker.api.impl;
 
+import com.tz.reliableinvoker.config.HandlerRegistry;
 import com.tz.reliableinvoker.config.ReliableInvokerProperties;
 import com.tz.reliableinvoker.dao.IInvocationRecordDao;
 import com.tz.reliableinvoker.dao.impl.JdbcTemplateInvocationRecordDaoImpl;
 import com.tz.reliableinvoker.model.InvocationRecord;
 import com.tz.reliableinvoker.model.InvocationRequest;
 import com.tz.reliableinvoker.model.InvocationStatusEnum;
-import com.tz.reliableinvoker.service.IAsyncExecutor;
 import com.tz.reliableinvoker.service.IRetryService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,7 +36,7 @@ public class ReliableInvokerImplTest {
     private EmbeddedDatabase db;
     private IInvocationRecordDao recordDao;
     private IRetryService retryService;
-    private IAsyncExecutor asyncExecutor;
+    private HandlerRegistry handlerRegistry;
     private TaskExecutor taskExecutor;
     private ReliableInvokerProperties properties;
     private ReliableInvokerImpl invoker;
@@ -51,10 +51,10 @@ public class ReliableInvokerImplTest {
         properties = new ReliableInvokerProperties();
         recordDao = new JdbcTemplateInvocationRecordDaoImpl(jdbcTemplate, properties);
         retryService = mock(IRetryService.class);
-        asyncExecutor = mock(IAsyncExecutor.class);
+        handlerRegistry = mock(HandlerRegistry.class);
         taskExecutor = mock(TaskExecutor.class);
-        invoker = new ReliableInvokerImpl(recordDao, retryService, asyncExecutor, properties,
-                taskExecutor, new HashMap<>());
+        invoker = new ReliableInvokerImpl(recordDao, retryService, properties,
+                taskExecutor, new HashMap<String, TaskExecutor>(), handlerRegistry);
     }
 
     @AfterEach
@@ -66,8 +66,6 @@ public class ReliableInvokerImplTest {
     void testSyncExecute() {
         InvocationRequest<TestScene> request = InvocationRequest.<TestScene>builder()
                 .scene(TestScene.TEST_SCENE)
-                .beanName("testBean")
-                .methodName("testMethod")
                 .async(false)
                 .saveRecord(true)
                 .build();
@@ -84,8 +82,6 @@ public class ReliableInvokerImplTest {
     void testAsyncExecute() {
         InvocationRequest<TestScene> request = InvocationRequest.<TestScene>builder()
                 .scene(TestScene.TEST_SCENE)
-                .beanName("testBean")
-                .methodName("testMethod")
                 .async(true)
                 .saveRecord(true)
                 .build();
@@ -101,8 +97,6 @@ public class ReliableInvokerImplTest {
     void testSaveRecordFalse() {
         InvocationRequest<TestScene> request = InvocationRequest.<TestScene>builder()
                 .scene(TestScene.TEST_SCENE)
-                .beanName("testBean")
-                .methodName("testMethod")
                 .async(false)
                 .saveRecord(false)
                 .build();

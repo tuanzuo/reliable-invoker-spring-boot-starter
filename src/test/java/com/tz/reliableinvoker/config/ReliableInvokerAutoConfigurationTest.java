@@ -2,6 +2,7 @@ package com.tz.reliableinvoker.config;
 
 import com.tz.reliableinvoker.api.IReliableInvoker;
 import com.tz.reliableinvoker.api.IReliableInvokerTask;
+import com.tz.reliableinvoker.config.HandlerRegistry;
 import com.tz.reliableinvoker.dao.IInvocationRecordDao;
 import com.tz.reliableinvoker.service.IAsyncExecutor;
 import com.tz.reliableinvoker.service.IBackupService;
@@ -45,6 +46,7 @@ public class ReliableInvokerAutoConfigurationTest {
                 assertThat(ctx.getBean(IRetryService.class)).isNotNull();
                 assertThat(ctx.getBean(IBackupService.class)).isNotNull();
                 assertThat(ctx.getBean(IAsyncExecutor.class)).isNotNull();
+                assertThat(ctx.getBean(HandlerRegistry.class)).isNotNull();
             }
         });
     }

@@ -60,8 +60,6 @@ class JdbcTemplateInvocationRecordDaoImplTest {
         assertNotNull(saved.getId());
         assertEquals("SN-001", saved.getSerialNo());
         assertEquals(SCENE, saved.getScene());
-        assertEquals("testBean", saved.getBeanName());
-        assertEquals("testMethod", saved.getMethodName());
         assertEquals("{\"key\":\"value\"}", saved.getParams());
         assertEquals(Integer.valueOf(InvocationStatusEnum.PENDING.getCode()), saved.getStatus());
         assertEquals(Integer.valueOf(0), saved.getRetryCount());
@@ -132,10 +130,10 @@ class JdbcTemplateInvocationRecordDaoImplTest {
         for (int i = 0; i < 5; i++) {
             jdbcTemplate.update(
                     "INSERT INTO reliable_invocation_record"
-                            + " (serial_no, scene, bean_name, method_name, params, status,"
+                            + " (serial_no, scene, params, status,"
                             + " retry_count, max_retry_count, retry_delay, create_time)"
-                            + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    "SN-BACKUP-" + i, SCENE, "testBean", "testMethod", "{}",
+                            + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    "SN-BACKUP-" + i, SCENE, "{}",
                     InvocationStatusEnum.SUCCESS.getCode(), 0, 3, 5000,
                     Timestamp.valueOf(LocalDateTime.now().minusDays(10))
             );
@@ -168,8 +166,6 @@ class JdbcTemplateInvocationRecordDaoImplTest {
         InvocationRecord record = new InvocationRecord();
         record.setSerialNo(serialNo);
         record.setScene(scene);
-        record.setBeanName("testBean");
-        record.setMethodName("testMethod");
         record.setParams("{\"key\":\"value\"}");
         record.setStatus(InvocationStatusEnum.PENDING.getCode());
         record.setRetryCount(0);
