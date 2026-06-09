@@ -214,9 +214,11 @@ public class OrderPayNotifyHandler implements IInvocationHandler<BusinessSceneEn
 public class OrderService {
 
     @Autowired
-    private PaymentGateway paymentGateway;       // 三方支付
+    private PaymentGateway paymentGateway;         // 三方支付
     @Autowired
-    private OrderDao orderDao;                   // 订单 DAO
+    private OrderDao orderDao;                     // 订单 DAO
+    @Autowired
+    private TransactionTemplate transactionTemplate; // 编程式事务
     @Autowired
     private IReliableInvoker reliableInvoker;
     @Autowired
@@ -226,40 +228,47 @@ public class OrderService {
      * 支付订单
      * <p>
      * 执行流程：
-     * 1. 调用三方支付 → 扣款
-     * 2. 更新订单状态为已支付（与步骤 1 在同一事务中）
-     * 3. 事务提交成功后（afterCommit），由 reliable-invoker 可靠发送 Kafka 通知
+     * 1. 调用三方支付（不在事务中，避免长事务占用连接）
+     * 2. 事务内：更新订单状态 + 保存可靠调用记录
+     * 3. 事务提交后（afterCommit），由 reliable-invoker 可靠发送 Kafka 通知
      * </p>
      */
-    @Transactional(rollbackFor = Exception.class)
     public void payOrder(Long orderId) {
-        // 1. 调用三方支付
+        // 1. 调用三方支付（先于事务，避免外部调用占用事务资源）
         PaymentResult result = paymentGateway.pay(orderId);
         if (!result.isSuccess()) {
             throw new PaymentException("支付失败: " + result.getErrorMsg());
         }
 
-        // 2. 更新订单状态（当前事务）
-        orderDao.updateStatus(orderId, "PAID");
-
-        // 3. 构建 Kafka 消息体
+        // 2. 构建 Kafka 消息体
         PayNotifyMessage message = new PayNotifyMessage();
         message.setOrderId(orderId.toString());
         message.setPayTime(new Date());
         message.setAmount(result.getAmount());
 
-        // 4. 可靠调用：事务提交后发送 Kafka 消息
-        //    —— 若 Kafka 宕机，消息记录将持久化到 DB，后续定时任务重试
-        InvocationRequest<BusinessSceneEnum> request = InvocationRequest.<BusinessSceneEnum>builder()
-                .scene(BusinessSceneEnum.ORDER_PAY_NOTIFY)
-                .params(message)
-                .async(true)          // 异步发送，不阻塞支付接口响应
-                .maxRetry(5)          // 最多重试 5 次
-                .retryDelay(60000)    // 重试间隔 60 秒（给 Kafka 恢复时间窗口）
-                .remark("订单" + orderId + "支付通知")
-                .build();
+        // 3. 编程式事务：订单状态更新 + 可靠调用记录 在同一事务中
+        transactionTemplate.execute(new TransactionCallbackWithoutResult() {
+            @Override
+            protected void doInTransactionWithoutResult(TransactionStatus status) {
+                // 3a. 更新订单状态
+                orderDao.updateStatus(orderId, "PAID");
 
-        reliableInvoker.execute(request);
+                // 3b. 可靠调用：事务提交后发送 Kafka 消息
+                //     —— reliableInvoker.execute() 会将记录 INSERT 到当前事务中
+                //     —— 事务提交后由 afterCommit 触发 Handler 执行
+                InvocationRequest<BusinessSceneEnum> request = InvocationRequest.<BusinessSceneEnum>builder()
+                        .scene(BusinessSceneEnum.ORDER_PAY_NOTIFY)
+                        .params(message)
+                        .async(true)          // 异步发送，不阻塞支付接口响应
+                        .maxRetry(5)          // 最多重试 5 次
+                        .retryDelay(60000)    // 重试间隔 60 秒（给 Kafka 恢复时间窗口）
+                        .remark("订单" + orderId + "支付通知")
+                        .build();
+
+                reliableInvoker.execute(request);
+            }
+        });
+        // 事务提交 → afterCommit → Handler.execute() 发送 Kafka
     }
 
     // 定时重试失败的 Kafka 消息
@@ -293,8 +302,9 @@ public class PayNotifyMessage {
 
 ### 设计要点
 
-- **事务边界**：三方支付 + 订单状态更新在同一个 `@Transactional` 内；Kafka 发送在事务提交后（`afterCommit`）执行，确保"先扣款成功，再发通知"
-- **可靠性**：Kafka 消息发送委托给 `reliable-invoker`，失败时记录自动持久化到 DB，`@Scheduled` 定时重试
+- **事务边界**：三方支付在事务外执行（避免长事务），订单状态更新 + 可靠调用记录在同一事务内
+- **afterCommit 机制**：事务提交后 Handler 才执行，三方支付失败（抛异常）→ 事务回滚 → Kafka 不发送
+- **可靠性**：Kafka 发送失败时记录自动持久化到 DB，`@Scheduled` 定时重试
 - **异步解耦**：`async(true)` 在线程池中发送 Kafka，不阻塞支付接口响应
 - **重试策略**：`retryDelay=60000` 给 Kafka 恢复留足时间窗口，避免无效重试
 
@@ -362,6 +372,8 @@ public class OrderService {
     @Autowired
     private OrderDao orderDao;
     @Autowired
+    private TransactionTemplate transactionTemplate;   // 编程式事务
+    @Autowired
     private IReliableInvoker reliableInvoker;
     @Autowired
     private IReliableInvokerTask invokerTask;
@@ -370,40 +382,47 @@ public class OrderService {
      * 支付订单并发放积分
      * <p>
      * 流程：
-     * 1. 调用三方支付
-     * 2. 更新订单状态（步骤 1、2 在同一事务）
+     * 1. 调用三方支付（不在事务中）
+     * 2. 事务内：更新订单状态 + 保存可靠调用记录
      * 3. 事务提交后调用积分系统发积分（若积分系统暂不可用，记录持久化，定时重试）
      * </p>
      */
-    @Transactional(rollbackFor = Exception.class)
     public void payOrder(Long orderId, Long userId) {
-        // 1. 三方支付
+        // 1. 三方支付（事务外执行）
         PaymentResult result = paymentGateway.pay(orderId);
         if (!result.isSuccess()) {
             throw new PaymentException("支付失败: " + result.getErrorMsg());
         }
 
-        // 2. 更新订单状态
-        orderDao.updateStatus(orderId, "PAID");
-
-        // 3. 构建发积分请求
+        // 2. 构建发积分请求
         AwardPointsRequest pointsReq = new AwardPointsRequest();
         pointsReq.setUserId(userId);
         pointsReq.setOrderId(orderId);
         pointsReq.setAmount(result.getAmount());
 
-        // 4. 可靠调用：事务提交后发积分
-        //    —— 若积分系统不可用，记录持久化到 DB，后续重试
-        InvocationRequest<BusinessSceneEnum> request = InvocationRequest.<BusinessSceneEnum>builder()
-                .scene(BusinessSceneEnum.AWARD_POINTS)
-                .params(pointsReq)
-                .async(true)       // 异步调用，不阻塞支付接口
-                .maxRetry(10)      // 最多重试 10 次
-                .retryDelay(10000) // 重试间隔 10 秒
-                .remark("订单" + orderId + "发积分")
-                .build();
+        // 3. 编程式事务：订单状态更新 + 可靠调用记录 在同一事务中
+        transactionTemplate.execute(new TransactionCallbackWithoutResult() {
+            @Override
+            protected void doInTransactionWithoutResult(TransactionStatus status) {
+                // 3a. 更新订单状态
+                orderDao.updateStatus(orderId, "PAID");
 
-        reliableInvoker.execute(request);
+                // 3b. 可靠调用：事务提交后发积分
+                //     —— 记录 INSERT 到当前事务中
+                //     —— 若积分系统不可用，定时任务持续重试
+                InvocationRequest<BusinessSceneEnum> request = InvocationRequest.<BusinessSceneEnum>builder()
+                        .scene(BusinessSceneEnum.AWARD_POINTS)
+                        .params(pointsReq)
+                        .async(true)       // 异步调用，不阻塞支付接口
+                        .maxRetry(10)      // 最多重试 10 次
+                        .retryDelay(10000) // 重试间隔 10 秒
+                        .remark("订单" + orderId + "发积分")
+                        .build();
+
+                reliableInvoker.execute(request);
+            }
+        });
+        // 事务提交 → afterCommit → Handler.execute() 调积分系统
     }
 
     // 定时重试失败的积分发放
@@ -426,10 +445,10 @@ public class OrderService {
 
 ### 设计要点
 
+- **事务外调用**：三方支付在事务外执行，不占用事务资源
 - **最终一致性**：积分发放不在支付事务内，而是通过 `afterCommit` 异步执行。即使积分系统暂时不可用，记录也会持久化，定时任务持续重试直到成功
 - **幂等性**：积分系统接口自身需保证幂等（按 `orderId` 去重），避免重试时重复发放
 - **限流保护**：`retryDelay=10000` 避免频繁重试对积分系统造成压力
-- **多场景共享**：支付通知和积分发放共享同一个 `IReliableInvoker` 入口，通过不同 scene 路由到不同 Handler
 
 ## 核心 API
 
@@ -489,9 +508,12 @@ InvocationRequest 参数 > 场景级配置 > 全局默认配置
 
 ## 事务集成
 
-- 调用记录插入参与当前 Spring 事务
-- 事务提交后 (`afterCommit`) 执行目标方法
-- 事务回滚时记录不持久化
+支持声明式事务（`@Transactional`）和编程式事务（`TransactionTemplate`）两种方式：
+
+- 调用记录 INSERT 参与当前 Spring 事务
+- 事务提交后（`afterCommit`）执行 Handler
+- 事务回滚时记录不持久化，Handler 不执行
+- **推荐**：外部调用（如三方支付）放在事务外，仅将数据更新 + `reliableInvoker.execute()` 放入事务
 
 ## 技术栈
 
