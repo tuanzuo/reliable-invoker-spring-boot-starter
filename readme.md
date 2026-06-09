@@ -1,6 +1,6 @@
 # reliable-invoker-spring-boot-starter
 
-Spring Boot Starter 组件，提供带持久化保证的方法调用能力，支持同步/异步执行、重试和备份/清理。
+Spring Boot Starter 组件，提供带持久化保证的 Handler 模式调用能力，支持同步/异步执行、重试和备份/清理。业务方实现 `IInvocationHandler` 接口并按场景注册，框架通过 scene 自动路由调用，彻底避免方法名硬编码问题。
 
 ## 快速开始
 
@@ -21,8 +21,6 @@ CREATE TABLE IF NOT EXISTS reliable_invocation_record (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
     serial_no VARCHAR(64) NOT NULL UNIQUE COMMENT '流水号',
     scene VARCHAR(64) NOT NULL COMMENT '业务场景',
-    bean_name VARCHAR(128) NOT NULL COMMENT 'Bean名称',
-    method_name VARCHAR(128) NOT NULL COMMENT '方法名',
     params TEXT COMMENT '参数JSON',
     status TINYINT NOT NULL DEFAULT 0 COMMENT '状态：0-待执行 1-执行中 2-成功 3-失败',
     retry_count INT NOT NULL DEFAULT 0 COMMENT '已重试次数',
@@ -48,7 +46,29 @@ public enum BusinessSceneEnum {
 }
 ```
 
-### 4. 配置
+### 4. 实现 Handler
+
+```java
+@Service
+public class OrderPaymentHandler implements IInvocationHandler<BusinessSceneEnum, String> {
+
+    @Autowired
+    private PaymentService paymentService;
+
+    @Override
+    public BusinessSceneEnum getScene() {
+        return BusinessSceneEnum.ORDER_SCENE;
+    }
+
+    @Override
+    public String execute(String paramsJson) {
+        Order order = JSON.parseObject(paramsJson, Order.class);
+        return this.paymentService.processPayment(order);
+    }
+}
+```
+
+### 5. 配置
 
 ```yaml
 reliable:
@@ -97,7 +117,7 @@ reliable:
 | `scenes.{name}.default-delay` | Integer | `null` | 场景级重试间隔，不配则使用全局 `default-delay` |
 | `scenes.{name}.async` | AsyncProperties | `null` | 场景独立线程池，不配则复用全局 `async` |
 
-### 5. 使用
+### 6. 使用
 
 ```java
 @Service
@@ -109,11 +129,9 @@ public class OrderService {
     private IReliableInvokerTask invokerTask;
 
     public void createOrder(Order order) {
-        // 可靠调用
+        // 可靠调用（通过 scene 定位 Handler）
         InvocationRequest<BusinessSceneEnum> request = InvocationRequest.<BusinessSceneEnum>builder()
             .scene(BusinessSceneEnum.ORDER_SCENE)
-            .beanName("paymentService")
-            .methodName("processPayment")
             .params(order)
             .async(true)
             .maxRetry(3)
@@ -187,6 +205,7 @@ public class OrderService {
 
 | 接口 | 默认实现 | 说明 |
 |------|---------|------|
+| `IInvocationHandler` | —（业务方实现） | 场景处理器，业务方实现 |
 | `IReliableInvoker` | `ReliableInvokerImpl` | 执行入口 |
 | `IReliableInvokerTask` | `ReliableInvokerTaskImpl` | 重试/备份逻辑 |
 | `IInvocationRecordDao` | `JdbcTemplateInvocationRecordDaoImpl` | 数据访问 |
@@ -217,4 +236,4 @@ InvocationRequest 参数 > 场景级配置 > 全局默认配置
 | Java | 1.8 |
 | Spring Boot | 2.3.12.RELEASE |
 | 持久层 | JdbcTemplate |
-| 序列化 | Jackson |
+| 序列化 | fastjson |
